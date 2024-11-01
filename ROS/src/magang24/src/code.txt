@@ -1,0 +1,107 @@
+source devel/setup.bash
+catkin_make
+rospack list | grep magang24
+rosservice call /turtle1/teleport_absolute 0.0 0.0 0.0
+
+rosrun turtlesim turtlesim_node
+rosrun magang24 turtle
+rosrun magang24 pos
+
+
+#include <opencv2/opencv.hpp>
+#include <ros/ros.h>
+#include "std_msgs/Float64.h"
+#include <geometry_msgs/Twist.h>
+#include <turtlesim/TeleportAbsolute.h>
+
+using namespace cv;
+using namespace std;
+
+int main(int argc, char** argv) {
+    ros::init(argc, argv, "posisiRobotROS");
+    ros::NodeHandle nh;
+    ros::Publisher posisi_pub = nh.advertise<geometry_msgs::Twist>("/posisi_bola", 10);
+    cv::VideoCapture cap("/home/lafrelle/ROS/src/magang24/src/vidROS.mp4");
+
+    // Panggil service teleportasi turtle
+    ros::ServiceClient teleport_client = nh.serviceClient<turtlesim::TeleportAbsolute>("/turtle1/teleport_absolute");
+    turtlesim::TeleportAbsolute teleport_srv;
+
+    // Set posisi awal di (0, 0)
+    teleport_srv.request.x = 0.5;  // Offset untuk menghindari batas di Turtlesim
+    teleport_srv.request.y = 0.5;
+    teleport_srv.request.theta = 0.0; // Menghadap ke arah kanan
+
+    if (teleport_client.call(teleport_srv)) {
+        ROS_INFO("Turtle berhasil dipindahkan ke posisi awal.");
+    } else {
+        ROS_ERROR("Gagal memindahkan turtle ke posisi awal.");
+    }
+
+    if (!cap.isOpened()) {
+        cout << "Video tidak dapat dibuka." << endl;
+        return -1;
+    }
+
+    Mat video, hsvVideo, maskBola;
+
+    while (ros::ok()) {
+        bool berhasil = cap.read(video);
+        if (!berhasil) {
+            cout << "Selesai membaca video." << endl;
+            break;
+        }
+
+        // Konversi video ke HSV dan lakukan masking untuk mendeteksi bola oranye
+        cvtColor(video, hsvVideo, COLOR_BGR2HSV);
+        Scalar minWarnaBola(0, 144, 153);
+        Scalar maxWarnaBola(15, 255, 255);
+        inRange(hsvVideo, minWarnaBola, maxWarnaBola, maskBola);
+
+        // Operasi morfologi untuk menghilangkan noise
+        erode(maskBola, maskBola, getStructuringElement(MORPH_RECT, Size(3, 3)));
+        dilate(maskBola, maskBola, getStructuringElement(MORPH_RECT, Size(3, 3)));
+
+        vector<vector<Point>> konturBola;
+        findContours(maskBola, konturBola, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE);
+
+        Point2f posisiBola;
+        float radiusBola = 0.0;
+        bool bolaTerdeteksi = false;
+
+        for (const auto& kontur : konturBola) {
+            double area = contourArea(kontur);
+            if (area > 100) {  // Hanya deteksi kontur dengan area besar
+                minEnclosingCircle(kontur, posisiBola, radiusBola);
+                bolaTerdeteksi = true;
+                break;
+            }
+        }
+
+        if (bolaTerdeteksi) {
+            // Perhitungan jarak relatif dari pusat frame dalam cm
+            float jarakX = (posisiBola.x - video.cols / 2) / 10.0; // Konversi pixel ke cm
+            float jarakY = (posisiBola.y - video.rows / 2) / 10.0; // Konversi pixel ke cm
+
+            // Konversi ke satuan Turtlesim (10 cm = 1 satuan)
+            geometry_msgs::Twist msg;
+            msg.linear.x = jarakX / 10.0; // Skala ke satuan turtlesim
+            msg.linear.y = jarakY / 10.0;
+            posisi_pub.publish(msg);
+
+            // Gambar bounding box bola di frame
+            circle(video, posisiBola, static_cast<int>(radiusBola), Scalar(0, 0, 255), 2);
+            circle(video, posisiBola, 5, Scalar(255, 0, 0), -1);
+
+            string teksPosisi = "Posisi Robot: (" + to_string(jarakX) + " cm, " + to_string(jarakY) + " cm)";
+            putText(video, teksPosisi, Point(10, 30), FONT_HERSHEY_SIMPLEX, 0.6, Scalar(0, 255, 0), 2);
+        }
+
+        imshow("Deteksi Bola", video);
+        if (waitKey(30) == 'q') {
+            break;
+        }
+        ros::spinOnce();
+    }
+    return 0;
+}

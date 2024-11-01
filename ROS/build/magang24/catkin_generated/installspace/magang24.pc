@@ -1,0 +1,8 @@
+prefix=/home/lafrelle/ROS/install
+
+Name: magang24
+Description: Description of magang24
+Version: 0.0.0
+Cflags: -I${prefix}/include
+Libs: -L${prefix}/lib -lmagang24
+Requires: roscpp rospy std_msgs message_runtime turtlesim

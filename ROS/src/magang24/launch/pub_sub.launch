@@ -1,0 +1,6 @@
+<launch>
+    <node name="publisher_test" pkg="magang25" type="publisher_test" output="screen"/>
+    <node name="subscriber_test" pkg="magang25" type="subscriber_test" output="screen"/>
+
+    
+</launch>

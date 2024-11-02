@@ -98,8 +98,6 @@ int main(int argc, char** argv){
             putText(video, teksPosisi, Point(10, 30), FONT_HERSHEY_SIMPLEX, 0.6, Scalar(0, 0, 255), 2);
         }
 
-        imshow("Deteksi Bola", video);
-
         if (waitKey(30) == 'q') {
             break;
         }
